@@ -97,6 +97,25 @@ curl -X GET "http://localhost:3000/v1/workspaces/ws_1/tasks?state=NEW&limit=10" 
 curl -X GET "http://localhost:3000/v1/events?limit=50"
 ```
 
+## Technical Implementation
+
+### State Machine & Authorization
+The system enforces strict state transitions and role-based access in the Domain layer (`src/domain/task.ts`):
+- **Transitions**: Defined valid paths (e.g., `NEW` → `IN_PROGRESS` → `DONE`).
+- **Roles**: 
+    - `manager`: Can only `CANCEL` tasks.
+    - `agent`: Can transition tasks they are specifically assigned to.
+
+### Idempotency & Concurrency
+Reliability is ensured at the Repository level (`src/repositories/taskRepository.ts`):
+- **Idempotency**: Task creation uses a unique `Idempotency-Key`. The server stores the first response and returns it for subsequent requests with the same key.
+- **Optimistic Locking**: All updates require the `If-Match-Version` header. The database checks if the record's version matches the provided version before applying changes, preventing "lost updates" in concurrent environments.
+
+### Outbox Pattern
+To ensure consistency between the database state and external event systems:
+- All state changes (Creation, Assignment, Transitions) are performed within a single database transaction.
+- Each transaction writes both the state change *and* a corresponding event record to the `task_events` table (the "Outbox"). 
+
 ## Project Structure
 - `src/domain`: Core business logic and state machine rules.
 - `src/repositories`: Data access layer with transaction management.
